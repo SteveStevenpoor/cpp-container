@@ -6,7 +6,7 @@ struct Point {
 };
 
 TEST(container, TestingGetElement) {
-    Container<char, int, double, Point> c('a', 4, 3.14, Point{12, 1});
+    Container<8192, char, int, double, Point> c('a', 4, 3.14, Point{12, 1});
 
     EXPECT_EQ(c.getElement<char>(0), 'a');
     EXPECT_EQ(c.getElement<int>(1), 4);

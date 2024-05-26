@@ -9,54 +9,60 @@
 
 using namespace std;
 
-static vector<size_t> offsets= {0};
 
 template<typename T>
 concept CopyConstructibleType = is_copy_constructible_v<T>;
 
-template<size_t SIZE, CopyConstructibleType T, CopyConstructibleType... Types>
-void allocate_block(void* memory, T arg, Types... args);
-
+//std forward??
 template<size_t SIZE, CopyConstructibleType... Types>
-void allocate(void* memory, Types... args) {
-    if (!memory) return;
-    static_assert((sizeof(Types) + ... + 0) <= SIZE, "Out of memory for allocation");
-
-    if constexpr (sizeof...(Types) > 0) {
-        allocate_block<SIZE, Types...>(memory, args...);
-    }
-
-    return;
-}
-
-template<size_t SIZE, CopyConstructibleType T, CopyConstructibleType... Types>
-void allocate_block(void* memory, T arg, Types... args) {
-    new (memory) T(arg);
-    offsets.push_back(offsets.back() + sizeof(T));
-    allocate<SIZE, Types...>(static_cast<char*>(memory) + sizeof(T), args...);
-}
-
-template<typename... Types>
 class Container {
     void* memory_;
-public:
-    constexpr Container(Types... args) {
-        constexpr size_t size = 1024*8;
-        memory_ = std::malloc(size);
-        allocate<size, Types...>(memory_, args...);
-        
-        // for (int i = 1; i < offsets.size(); i++) {
-        //     offsets[i] += offsets[i - 1];
-        // }
-    }
+    vector<size_t> offsets_ = {0};
     
-    ~Container() noexcept {
-        if (memory_) std::free(memory_);
+public:
+    constexpr Container(Types... args) requires((sizeof(Types) + ... + 0) <= SIZE) {
+        memory_ = std::malloc(SIZE);
+        allocate<Types...>(memory_, args...);
     }
 
     template<typename T>
+    void destruct_some(T* p) {
+        p->~T();
+    }
+
+    void cleanup() {
+        size_t offset = 0;
+        (destruct_some<Types>((Types*)(static_cast<char*>(memory_) + (offset += sizeof(Types)))), ...);
+    }
+
+    ~Container() noexcept {
+        cleanup();
+        if (memory_) std::free(memory_);
+    }
+
+    template<CopyConstructibleType T>
     T getElement(size_t idx) {
-        return *((T*)(static_cast<char*>(memory_) + offsets[idx]));
+        return *((T*)(static_cast<char*>(memory_) + offsets_[idx]));
+    }
+
+
+private:
+    template<CopyConstructibleType... TTypes>
+    void allocate(void* mem, TTypes... args) {
+        if (!mem) return;
+
+        if constexpr (sizeof...(TTypes) > 0) {
+            allocate_block<TTypes...>(mem, args...);
+        }
+
+        return;
+    }
+
+    template<CopyConstructibleType T, CopyConstructibleType... TTypes>
+    void allocate_block(void* mem, T arg, TTypes... args) {
+        T* tptr = new (mem) T(arg);
+        offsets_.push_back(offsets_.back() + sizeof(T));
+        allocate<TTypes...>(static_cast<char*>(mem) + sizeof(T), args...);
     }
 
 };
